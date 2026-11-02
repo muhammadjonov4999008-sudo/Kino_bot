@@ -1,0 +1,87 @@
+ import asyncio
+import sqlite3
+
+from aiogram import Bot, Dispatcher, F
+from aiogram.filters import Command
+from aiogram.types import Message
+
+TOKEN = "9020388844:AAH06wSxcoMBAGj08NZWw4I7n01vDNDrBcI"
+ADMIN_ID = 7596992302
+
+db = sqlite3.connect("kino.db")
+db.execute(
+    "CREATE TABLE IF NOT EXISTS kino (kod TEXT PRIMARY KEY, nom TEXT, file_id TEXT)"
+)
+db.commit()
+
+bot = Bot(TOKEN)
+dp = Dispatcher()
+
+
+@dp.message(Command("start"))
+async def start(m: Message):
+    text = "Salom! 🎬 Kino kodini yuboring."
+    if m.from_user.id == ADMIN_ID:
+        text += (
+            "\n\n👑 Admin:\n"
+            "• Video yuboring, caption: 101 Kino nomi\n"
+            "• /list — ro'yxat\n"
+            "• /del 101 — o'chirish"
+        )
+    await m.answer(text)
+
+
+# ADMIN: video yuboring, caption: "101 Kino nomi"
+@dp.message(F.from_user.id == ADMIN_ID, F.video)
+async def add_movie(m: Message):
+    parts = (m.caption or "").split(maxsplit=1)
+    if not parts:
+        await m.answer("Videoga caption yozing: 101 Kino nomi")
+        return
+    kod = parts[0]
+    nom = parts[1] if len(parts) > 1 else kod
+    db.execute(
+        "INSERT OR REPLACE INTO kino VALUES (?, ?, ?)", (kod, nom, m.video.file_id)
+    )
+    db.commit()
+    await m.answer(f"✅ Qo'shildi: {kod} — {nom}")
+
+
+@dp.message(F.from_user.id == ADMIN_ID, Command("list"))
+async def list_movies(m: Message):
+    rows = db.execute("SELECT kod, nom FROM kino").fetchall()
+    if not rows:
+        await m.answer("Hali kino yo'q.")
+        return
+    await m.answer("\n".join(f"{k} — {n}" for k, n in rows))
+
+
+@dp.message(F.from_user.id == ADMIN_ID, Command("del"))
+async def delete_movie(m: Message):
+    parts = (m.text or "").split()
+    if len(parts) < 2:
+        await m.answer("Ishlatilishi: /del 101")
+        return
+    db.execute("DELETE FROM kino WHERE kod=?", (parts[1],))
+    db.commit()
+    await m.answer("🗑 O'chirildi.")
+
+
+# Hamma foydalanuvchi: kod yuboradi
+@dp.message(F.text)
+async def get_movie(m: Message):
+    row = db.execute(
+        "SELECT nom, file_id FROM kino WHERE kod=?", (m.text.strip(),)
+    ).fetchone()
+    if row:
+        await m.answer_video(row[1], caption=f"🎬 {row[0]}")
+    else:
+        await m.answer("❌ Bunday kod topilmadi.")
+
+
+async def main():
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
